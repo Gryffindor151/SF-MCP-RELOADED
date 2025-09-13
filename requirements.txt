@@ -1,0 +1,2 @@
+# Core dependencies - will be added incrementally
+python-dotenv==1.0.0 

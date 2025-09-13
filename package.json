@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@tsmztech/mcp-server-salesforce": "^0.0.3"
+  }
+}
