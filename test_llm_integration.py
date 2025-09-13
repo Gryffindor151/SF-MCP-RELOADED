@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test LLM integration with tool selection
+Test complete LLM integration with natural language responses
 """
 
 import asyncio
@@ -19,11 +19,11 @@ from src.core.config import config
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
 
-async def test_llm_integration():
-    """Test the complete LLM integration"""
+async def test_natural_language_responses():
+    """Test the complete natural language interface"""
     
-    print("🚀 Testing LLM Integration")
-    print("=" * 40)
+    print("🚀 Testing Natural Language Interface")
+    print("=" * 50)
     
     # Validate config
     sf_errors = config.validate_salesforce_config()
@@ -44,50 +44,43 @@ async def test_llm_integration():
         await mcp_client.start_server()
         print("✅ MCP client started")
         
-        # Test queries
+        # Test queries with natural language responses
         test_queries = [
-            "What fields are available on Contact?"
+            "Show me all Technology accounts",
+            "What fields are available on Contact?", 
+            "Search for objects containing Order",
+            "How many accounts do we have?",
+            "Describe the Account object"
         ]
         
         for i, query in enumerate(test_queries, 1):
-            print(f"\n{i}️⃣ Testing Query: '{query}'")
-            print("-" * 50)
+            print(f"\n{i}️⃣ Query: '{query}'")
+            print("-" * 60)
             
             try:
-                # Select tool using LLM
-                result = await tool_selector.select_tool(query)
+                # Process query and get natural language response
+                result = await tool_selector.process_query(query)
                 
                 if result.get("success"):
-                    print(f"✅ Tool Selected: {result['tool_name']}")
-                    print(f"   Parameters: {result['parameters']}")
-                    print(f"   Reasoning: {result['reasoning']}")
-                    print(f"   Confidence: {result['confidence']:.2f}")
-                    print(f"   Category: {result['selected_tool_info']['category']}")
+                    # Show the natural language response
+                    print(f"🤖 Response:")
+                    print(f"   {result['natural_response']}")
                     
-                    # Test actual tool execution
-                    if result['tool_name'] and result['parameters']:
-                        print("   🔧 Executing tool...")
-                        tool_result = await mcp_client.call_tool(
-                            result['tool_name'], 
-                            result['parameters']
-                        )
-                        print(f"   ✅ Tool executed successfully")
-                        print(f"   📊 Result preview: {str(tool_result)[:100]}...")
+                    # Show technical details (optional)
+                    metadata = result.get("metadata", {})
+                    print(f"\n📊 Technical Details:")
+                    print(f"   Tool Used: {result.get('tool_used', 'Unknown')}")
+                    print(f"   Confidence: {metadata.get('confidence', 0):.2f}")
+                    print(f"   Category: {metadata.get('category', 'Unknown')}")
                     
                 else:
-                    print(f"❌ Tool selection failed: {result.get('error')}")
+                    print(f"❌ Error Response:")
+                    print(f"   {result['natural_response']}")
                 
             except Exception as e:
                 print(f"❌ Query failed: {e}")
         
-        # Show statistics
-        print(f"\n📊 Tool Selector Statistics")
-        print("-" * 30)
-        stats = await tool_selector.get_stats()
-        for key, value in stats.items():
-            print(f"{key}: {value}")
-        
-        print("\n🎉 LLM Integration test completed!")
+        print(f"\n🎉 Natural Language Interface test completed!")
         return True
         
     except Exception as e:
@@ -97,6 +90,57 @@ async def test_llm_integration():
     finally:
         await mcp_client.close()
 
+async def interactive_mode():
+    """Interactive mode for testing queries"""
+    
+    print("🎮 Interactive Mode - Type 'quit' to exit")
+    print("=" * 40)
+    
+    # Initialize components
+    mcp_client = MCPClient()
+    tool_selector = ToolSelector(mcp_client)
+    
+    try:
+        await mcp_client.start_server()
+        print("✅ Ready for queries!\n")
+        
+        while True:
+            try:
+                # Get user input
+                user_query = input("💬 Ask me about Salesforce: ").strip()
+                
+                if user_query.lower() in ['quit', 'exit', 'q']:
+                    break
+                
+                if not user_query:
+                    continue
+                
+                print("🤔 Processing...")
+                
+                # Process query
+                result = await tool_selector.process_query(user_query)
+                
+                # Show response
+                print(f"\n🤖 {result['natural_response']}\n")
+                
+            except KeyboardInterrupt:
+                break
+            except Exception as e:
+                print(f"❌ Error: {e}\n")
+        
+        print("👋 Goodbye!")
+        
+    finally:
+        await mcp_client.close()
+
+async def main():
+    """Main function"""
+    
+    if len(sys.argv) > 1 and sys.argv[1] == "--interactive":
+        await interactive_mode()
+    else:
+        success = await test_natural_language_responses()
+        sys.exit(0 if success else 1)
+
 if __name__ == "__main__":
-    success = asyncio.run(test_llm_integration())
-    sys.exit(0 if success else 1) 
+    asyncio.run(main()) 
