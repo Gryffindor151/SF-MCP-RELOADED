@@ -7,6 +7,7 @@ import logging
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from enum import Enum
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ class ToolCategory(Enum):
 
 @dataclass
 class ToolInfo:
-    """Information about a single MCP tool"""
+    """Enhanced information about a single MCP tool"""
     name: str
     description: str
     category: ToolCategory
@@ -29,6 +30,14 @@ class ToolInfo:
     optional_params: List[str]
     complexity_level: str
     keywords: List[str]
+    examples: List[str] = None      # Extracted examples
+    rules: List[str] = None         # Extracted rules/notes
+    
+    def __post_init__(self):
+        if self.examples is None:
+            self.examples = []
+        if self.rules is None:
+            self.rules = []
 
 class ToolRegistry:
     """Dynamic registry for MCP tools with categorization and caching"""
@@ -98,7 +107,7 @@ class ToolRegistry:
             return False
     
     def _build_registry(self, raw_tools: List[Dict[str, Any]]) -> Dict[str, ToolInfo]:
-        """Build structured registry from raw MCP tools"""
+        """Build structured registry from raw MCP tools with enhanced info extraction"""
         registry = {}
         
         for tool in raw_tools:
@@ -107,19 +116,25 @@ class ToolRegistry:
                 description = tool.get("description", "")
                 input_schema = tool.get("inputSchema", {})
                 
-                # Extract parameters
+                # Extract parameters with enhanced details
                 properties = input_schema.get("properties", {})
                 required = input_schema.get("required", [])
                 optional = [k for k in properties.keys() if k not in required]
                 
+                # Extract examples from description (if any)
+                examples = self._extract_examples_from_description(description)
+                
+                # Extract key rules/notes from description
+                rules = self._extract_rules_from_description(description)
+                
                 # Determine category
                 category = self.category_mapping.get(name, ToolCategory.DATA_OPERATIONS)
                 
-                # Extract keywords from description
-                keywords = self._extract_keywords(description)
+                # Extract keywords from description (enhanced)
+                keywords = self._extract_enhanced_keywords(description)
                 
-                # Determine complexity
-                complexity = self._determine_complexity(name, input_schema, description)
+                # Determine complexity based on description content
+                complexity = self._determine_complexity_from_description(name, description, input_schema)
                 
                 tool_info = ToolInfo(
                     name=name,
@@ -129,7 +144,9 @@ class ToolRegistry:
                     required_params=required,
                     optional_params=optional,
                     complexity_level=complexity,
-                    keywords=keywords
+                    keywords=keywords,
+                    examples=examples,  # Add examples
+                    rules=rules        # Add extracted rules
                 )
                 
                 registry[name] = tool_info
@@ -149,37 +166,126 @@ class ToolRegistry:
         
         return categories
     
-    def _extract_keywords(self, description: str) -> List[str]:
-        """Extract relevant keywords from tool description"""
-        # Simple keyword extraction - can be enhanced with NLP
+    def _extract_examples_from_description(self, description: str) -> List[str]:
+        """Extract examples from tool description"""
+        examples = []
+        
+        # Look for "Examples:" or "Example:" sections
+        import re
+        
+        # Pattern to find examples sections
+        example_patterns = [
+            r"Examples?:\s*\n(.*?)(?=\n\n|\nNotes?:|\nImportant|\Z)",
+            r"Examples?:\s*(.*?)(?=\n\n|\nNotes?:|\nImportant|\Z)"
+        ]
+        
+        for pattern in example_patterns:
+            matches = re.findall(pattern, description, re.DOTALL | re.IGNORECASE)
+            for match in matches:
+                # Split by numbered examples
+                example_items = re.split(r'\n\s*\d+\.', match)
+                for item in example_items:
+                    if item.strip():
+                        examples.append(item.strip())
+        
+        return examples[:5]  # Limit to 5 examples
+    
+    def _extract_rules_from_description(self, description: str) -> List[str]:
+        """Extract important rules/notes from tool description"""
+        rules = []
+        
+        import re
+        
+        # Look for "Notes:", "Important:", "Rules:" sections
+        rule_patterns = [
+            r"Notes?:\s*\n(.*?)(?=\n\n|\Z)",
+            r"Important[^:]*:\s*\n(.*?)(?=\n\n|\Z)",
+            r"Rules?:\s*\n(.*?)(?=\n\n|\Z)"
+        ]
+        
+        for pattern in rule_patterns:
+            matches = re.findall(pattern, description, re.DOTALL | re.IGNORECASE)
+            for match in matches:
+                # Split by bullet points or dashes
+                rule_items = re.split(r'\n\s*[-•*]', match)
+                for item in rule_items:
+                    if item.strip():
+                        rules.append(item.strip())
+        
+        return rules[:10]  # Limit to 10 rules
+    
+    def _extract_enhanced_keywords(self, description: str) -> List[str]:
+        """Enhanced keyword extraction from description"""
         keywords = []
         
-        # Common action words
-        actions = ["query", "search", "describe", "create", "update", "delete", "manage", "read", "write", "execute"]
+        # Convert to lowercase for analysis
+        desc_lower = description.lower()
+        
+        # Action words (more comprehensive)
+        actions = [
+            "query", "search", "describe", "create", "update", "delete", "manage", 
+            "read", "write", "execute", "insert", "upsert", "retrieve", "find",
+            "list", "get", "show", "analyze", "count", "sum", "average", "group"
+        ]
+        
+        # Salesforce entities (more comprehensive)  
+        entities = [
+            "account", "contact", "opportunity", "case", "lead", "user", "object", 
+            "field", "apex", "trigger", "soql", "sosl", "record", "data",
+            "permission", "debug", "log", "metadata", "relationship"
+        ]
+        
+        # Extract action keywords
         for action in actions:
-            if action.lower() in description.lower():
+            if action in desc_lower:
                 keywords.append(action)
         
-        # Salesforce entities
-        entities = ["account", "contact", "opportunity", "case", "lead", "object", "field", "apex", "trigger"]
+        # Extract entity keywords
         for entity in entities:
-            if entity.lower() in description.lower():
+            if entity in desc_lower:
                 keywords.append(entity)
         
-        return keywords
-    
-    def _determine_complexity(self, name: str, schema: Dict[str, Any], description: str) -> str:
-        """Determine tool complexity level"""
-        required_params = len(schema.get("required", []))
-        total_params = len(schema.get("properties", {}))
+        # Extract quoted examples (common patterns)
+        import re
+        quoted_examples = re.findall(r"'([^']+)'", description)
+        keywords.extend([ex.lower() for ex in quoted_examples[:5]])
         
-        # Simple heuristics
-        if "aggregate" in name or "complex" in description.lower():
-            return "complex"
-        elif required_params <= 1 and total_params <= 3:
-            return "simple"
-        elif "manage" in name or "write" in name or "create" in name:
+        return list(set(keywords))  # Remove duplicates
+    
+    def _determine_complexity_from_description(self, name: str, description: str, schema: Dict[str, Any]) -> str:
+        """Determine complexity based on description content"""
+        desc_lower = description.lower()
+        
+        # Advanced complexity indicators
+        advanced_indicators = [
+            "group by", "aggregate", "having", "complex", "advanced", "metadata",
+            "permissions", "deploy", "manage", "create object", "apex", "trigger"
+        ]
+        
+        # Complex indicators
+        complex_indicators = [
+            "relationship", "join", "subquery", "nested", "multiple", "bulk"
+        ]
+        
+        # Simple indicators
+        simple_indicators = [
+            "simple", "basic", "single", "get", "list", "show"
+        ]
+        
+        # Count indicators
+        advanced_count = sum(1 for indicator in advanced_indicators if indicator in desc_lower)
+        complex_count = sum(1 for indicator in complex_indicators if indicator in desc_lower)
+        simple_count = sum(1 for indicator in simple_indicators if indicator in desc_lower)
+        
+        # Determine based on counts and required parameters
+        required_params = len(schema.get("required", []))
+        
+        if advanced_count > 0 or required_params > 4:
             return "advanced"
+        elif complex_count > 0 or required_params > 2:
+            return "complex"
+        elif simple_count > 0 or required_params <= 1:
+            return "simple"
         else:
             return "moderate"
     

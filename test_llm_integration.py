@@ -46,7 +46,7 @@ async def test_llm_integration():
         
         # Test queries
         test_queries = [
-            "Show me all Technology accounts"
+            "What fields are available on Contact?"
         ]
         
         for i, query in enumerate(test_queries, 1):

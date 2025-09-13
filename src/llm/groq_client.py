@@ -37,6 +37,8 @@ class GroqLLMClient:
         
         system_prompt = self._build_system_prompt(available_tools)
         user_prompt = self._build_user_prompt(user_query)
+        print(f"System prompt: {system_prompt}")
+        print(f"User prompt: {user_prompt}")
         
         try:
             messages = [
@@ -58,31 +60,57 @@ class GroqLLMClient:
             raise
     
     def _build_system_prompt(self, available_tools: List[Dict[str, Any]]) -> str:
-        """Build system prompt with available tools"""
+        """Build system prompt using rich MCP tool descriptions"""
         
-        tools_description = ""
-        for tool in available_tools:
+        tools_section = ""
+        for i, tool in enumerate(available_tools, 1):
             name = tool.get("name", "")
             description = tool.get("description", "")
             schema = tool.get("inputSchema", {})
+            
+            # Extract schema details
+            properties = schema.get("properties", {})
             required = schema.get("required", [])
             
-            tools_description += f"""
-Tool: {name}
-Description: {description}
-Required Parameters: {required}
+            # Format parameters from schema
+            params_section = ""
+            for param, details in properties.items():
+                param_type = details.get("type", "string")
+                param_desc = details.get("description", "")
+                is_required = "REQUIRED" if param in required else "OPTIONAL"
+                
+                # Handle array types
+                if param_type == "array":
+                    items = details.get("items", {})
+                    if items.get("type"):
+                        param_type = f"array of {items['type']}"
+                
+                params_section += f"    • {param} ({param_type}) [{is_required}]: {param_desc}\n"
+            
+            tools_section += f"""
+{i}. TOOL: {name}
+
+DESCRIPTION:
+{description}
+
+PARAMETERS:
+{params_section}
 """
         
-        return f"""You are a Salesforce expert assistant. Your job is to analyze user queries and select the most appropriate Salesforce tool to fulfill the request.
+        return f"""You are a Salesforce expert. Analyze the user's query and select the most appropriate tool from the available options below.
 
-Available Tools:
-{tools_description}
+AVAILABLE TOOLS:
+{tools_section}
 
-Instructions:
-1. Analyze the user's query to understand their intent
-2. Select the most appropriate tool from the available options
-3. Extract the required parameters from the query
-4. Return your response in this JSON format:
+INSTRUCTIONS:
+1. Read the user's query carefully
+2. Match the query intent with the tool descriptions and examples provided above
+3. Select the most appropriate tool based on the detailed descriptions
+4. Extract parameters following the parameter descriptions and rules from the tool documentation
+5. Use the examples and notes provided in each tool's description as guidance
+
+RESPONSE FORMAT:
+Return your analysis as valid JSON:
 
 {{
     "tool_name": "selected_tool_name",
@@ -90,26 +118,27 @@ Instructions:
         "param1": "value1",
         "param2": "value2"
     }},
-    "reasoning": "Brief explanation of why this tool was chosen",
+    "reasoning": "Brief explanation referencing the tool description",
     "confidence": 0.95
 }}
 
-Guidelines:
-- For queries asking to "show", "get", "find" records: Use salesforce_query_records
-- For counting or aggregation: Use salesforce_aggregate_query
-- For object information: Use salesforce_describe_object
-- For searching objects: Use salesforce_search_objects
-- For data modifications: Use salesforce_dml_records
+PARAMETER EXTRACTION RULES:
+- Add the required parameters to the parameters object based on the tool description
+- Follow the parameter descriptions exactly as provided in each tool's documentation
+- Pay attention to the examples and notes in the tool descriptions
+- Use the format and constraints specified in each parameter's description 
+- For SOQL queries, follow the examples provided in the salesforce_query_records description
+- For relationship queries, use the patterns shown in the tool documentation
 
-Always extract parameters carefully and provide reasoning for your choice."""
-    
+Select the tool that best matches the user's intent based on the comprehensive descriptions provided above."""
+
     def _build_user_prompt(self, user_query: str) -> str:
-        """Build user prompt with the specific query"""
-        return f"""Please analyze this Salesforce query and select the appropriate tool:
+        """Build focused user prompt"""
+        return f"""Analyze this Salesforce query and select the appropriate tool:
 
-User Query: "{user_query}"
+USER QUERY: "{user_query}"
 
-Analyze the query and provide your tool selection and parameter extraction in the specified JSON format."""
+Based on the detailed tool descriptions provided in the system prompt, select the most appropriate tool and extract the necessary parameters. Use the examples and guidelines from the tool descriptions to ensure correct parameter formatting."""
     
     def _parse_llm_response(self, response_content: str) -> Dict[str, Any]:
         """Parse LLM response and extract structured data"""
@@ -162,16 +191,28 @@ Analyze the query and provide your tool selection and parameter extraction in th
     
     async def format_response(self, tool_result: Dict[str, Any], original_query: str, 
                             tool_name: str) -> str:
-        """Format tool result into natural language response"""
+        """Format tool result into natural language response with error handling"""
         
-        system_prompt = """You are a helpful Salesforce assistant. Format the tool execution result into a clear, natural language response for the user.
+        # Handle errors first
+        if "error" in tool_result or not tool_result:
+            error_msg = tool_result.get("error", "Unknown error occurred")
+            
+            # Provide helpful error explanations
+            if "unexpected token" in str(error_msg):
+                return f"I encountered a query syntax error. This usually happens when field names are missing or incorrect. Let me know what specific information you're looking for and I'll try again."
+            elif "Invalid field" in str(error_msg):
+                return f"I tried to access a field that doesn't exist on this object. Could you clarify which fields you're interested in?"
+            else:
+                return f"I encountered an error while processing your request: {error_msg}. Could you try rephrasing your question?"
+        
+        system_prompt = """You are a helpful Salesforce assistant. Format the tool execution result into a clear, natural language response.
 
 Guidelines:
 - Be conversational and helpful
 - Explain the results clearly
-- If there are errors, explain them in simple terms
-- If there are many results, summarize them appropriately
-- Always relate back to the user's original question"""
+- If there are many results, provide a good summary
+- Always relate back to the user's original question
+- If there are no results, explain what that means"""
         
         user_prompt = f"""Original user query: "{original_query}"
 Tool used: {tool_name}
@@ -190,4 +231,4 @@ Please format this into a natural, helpful response for the user."""
             
         except Exception as e:
             logger.error(f"Failed to format response: {e}")
-            return f"I got results from Salesforce, but had trouble formatting the response. Raw result: {tool_result}" 
+            return f"I got results from Salesforce but had trouble formatting the response. Here's what I found: {tool_result}"
