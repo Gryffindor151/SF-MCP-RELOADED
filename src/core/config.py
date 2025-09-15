@@ -19,6 +19,15 @@ class Config:
     SALESFORCE_TOKEN: Optional[str] = os.getenv("SALESFORCE_TOKEN")
     SALESFORCE_INSTANCE_URL: Optional[str] = os.getenv("SALESFORCE_INSTANCE_URL")
     
+    # Groq Configuration
+    GROQ_API_KEY: Optional[str] = os.getenv("GROQ_API_KEY")
+    GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama3-8b-8192")
+    
+    # LLM Configuration
+    LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", "0.1"))
+    LLM_MAX_TOKENS: int = int(os.getenv("LLM_MAX_TOKENS", "1000"))
+    LLM_TIMEOUT: int = int(os.getenv("LLM_TIMEOUT", "30"))
+    
     @classmethod
     def get_salesforce_env_vars(cls) -> dict:
         """Get Salesforce environment variables for MCP server"""
@@ -43,6 +52,16 @@ class Config:
             errors.append("SALESFORCE_TOKEN is required")
         if not cls.SALESFORCE_INSTANCE_URL:
             errors.append("SALESFORCE_INSTANCE_URL is required")
+        
+        return errors
+    
+    @classmethod
+    def validate_llm_config(cls) -> list:
+        """Validate required LLM configuration"""
+        errors = []
+        
+        if not cls.GROQ_API_KEY:
+            errors.append("GROQ_API_KEY is required")
         
         return errors
 
