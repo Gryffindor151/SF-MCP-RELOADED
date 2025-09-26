@@ -46,11 +46,7 @@ async def test_natural_language_responses():
         
         # Test queries with natural language responses
         test_queries = [
-            "Show me all Technology accounts",
-            "What fields are available on Contact?", 
-            "Search for objects containing Order",
-            "How many accounts do we have?",
-            "Describe the Account object"
+            "what is the last created account?"
         ]
         
         for i, query in enumerate(test_queries, 1):

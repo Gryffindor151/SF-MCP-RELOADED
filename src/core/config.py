@@ -28,6 +28,14 @@ class Config:
     LLM_MAX_TOKENS: int = int(os.getenv("LLM_MAX_TOKENS", "1000"))
     LLM_TIMEOUT: int = int(os.getenv("LLM_TIMEOUT", "30"))
     
+    # API Configuration
+    API_HOST: str = os.getenv("API_HOST", "0.0.0.0")
+    API_PORT: int = int(os.getenv("API_PORT", "8000"))
+    API_DEBUG: bool = os.getenv("API_DEBUG", "false").lower() == "true"
+    
+    # Authentication Configuration
+    API_BEARER_TOKEN: Optional[str] = os.getenv("API_BEARER_TOKEN")
+    
     @classmethod
     def get_salesforce_env_vars(cls) -> dict:
         """Get Salesforce environment variables for MCP server"""

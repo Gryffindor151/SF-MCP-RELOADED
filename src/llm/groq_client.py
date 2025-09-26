@@ -37,8 +37,6 @@ class GroqLLMClient:
         
         system_prompt = self._build_system_prompt(available_tools)
         user_prompt = self._build_user_prompt(user_query)
-        print(f"System prompt: {system_prompt}")
-        print(f"User prompt: {user_prompt}")
         
         try:
             messages = [
